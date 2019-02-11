@@ -1,0 +1,758 @@
+1 XQuery Grammar
+
+1.1 Lexical structure
+
+A character is an atomic unit of text as specified by ISO/IEC 10646 [ISO10646] (see also [ISO10646-2000]). Legal characters are those allowed in the [XML] recommendation.
+
+A lexical pattern is a rule that describes how a sequence of characters can match a grammar unit. A lexeme is the smallest meaningful unit in the grammar that has syntactic interpretation. A token is a symbol that matches lexemes, and is the output of the lexical analyzer. A token symbol is the symbolic name given to that token. A single token may be composed of one or more lexemes. If there is more than one lexeme, they may be separated by whitespace or punctuation. For instance, a token AxisDescendantOrSelf might have two lexemes, "descendant-or-self" and "::".
+Pattern	Lexeme(s)	Token Names (for example)
+"or"	"or"	Or
+"="	"="	Equals
+(Prefix ':')? LocalPart	"p"	QName
+":"
+"foo"
+<"descendant-or-self" "::">	"descendant-or-self"	AxisDescendantOrSelf
+"::"
+
+When patterns are simple string matches, the strings are embedded directly into the BNF. In other cases, token symbols are used when the pattern is a more complex regular expression (the major cases of these are NCName, QName, and Number and String literals). It is up to an implementation to decide on the exact tokenization strategy, which may be different depending on the parser construction. For example, an implementation may decide that a token named For is composed of only "for", or may decide that it is composed of ("for" "$"). In the first case the implementation may decide to use lexical lookahead to distinguish the "for" lexeme from a QName that has the lexeme "for". In the second case, the implementation may decide to combine the two lexemes into a single "long" token. In either case, the end grammatical result will be the same. In the BNF, the notation "< ... >" is used to indicate and delimit a sequence of lexemes that must be recognized using lexical lookahead or some equivalent means.
+
+This grammar implies lexical states, which are lexical constraints on the tokenization process based on grammatical positioning. The exact structure of these states is left to the implementation, but the normative rules for calculating these states are given in the 1.1.2 Lexical Rules section.
+
+When tokenizing, the longest possible match that is valid in the current lexical state is prefered .
+
+For readability, Whitespace may be used in most expressions even though not explicitly notated in the BNF. Whitespace may be freely added between lexemes, except a few cases where whitespace is needed to disambiguate the token. For instance, in XML, "-" is a valid character in an element or attribute name. When used as an operator after the characters of a name, it must be separated from the name, e.g. by using whitespace or parentheses.
+
+Special whitespace notation is specified with the BNF productions, when it is different from the default rules. "ws: explicit" means that where whitespace is allowed must be explicitly notated in the BNF. "ws: significant" means that whitespace is significant as value content.
+
+For XQuery, Whitespace is not freely allowed in the non-computed Constructor productions, but is specified explicitly in the grammar, in order to be more consistent with XML. The lexical states where whitespace must have explicit specification are as follows: START_TAG, END_TAG, ELEMENT_CONTENT, XML_COMMENT, PROCESSING_INSTRUCTION, PROCESSING_INSTRUCTION_CONTENT, CDATA_SECTION, QUOT_ATTRIBUTE_CONTENT, and APOS_ATTRIBUTE_CONTENT.
+
+All keywords are case sensitive.
+1.1.1 Syntactic Constructs
+
+    Character Classes
+
+    The following basic tokens are defined in [XML].
+
+        Letter
+
+        BaseChar
+
+        Ideographic
+
+        CombiningChar
+
+        Digit
+
+        Extender
+
+    Identifiers
+
+    The following identifier components are defined in [XMLNAMES].
+
+        NCName
+
+        NCNameChar
+
+        QName
+
+        Prefix
+
+        LocalPart
+
+    String Literals and Numbers
+    [1]   	IntegerLiteral	   ::=   	Digits
+    [2]   	DecimalLiteral	   ::=   	("." Digits) |  (Digits "." [0-9]*)
+    [3]   	DoubleLiteral	   ::=   	(("." Digits) |  (Digits ("." [0-9]*)?)) ("e" | "E") ("+" | "-")? Digits
+    [4]   	StringLiteral
+    (ws: significant)	   ::=   	('"' (('"' '"') |  [^"])* '"') |  ("'" (("'" "'") |  [^'])* "'")
+    [5]   	URLLiteral
+    (ws: significant)	   ::=   	('"' (('"' '"') |  [^"])* '"') |  ("'" (("'" "'") |  [^'])* "'")
+
+    Comments
+
+    Comments are lexical constructs only, and do not affect the processing of an expression. They are allowed whereever whitespace is allowed, as long as the whitespace notation in not 'explicit' or 'significant'.
+    [6]   	ExprComment	   ::=   	"{--" [^}]* "--}"
+
+    Defined Tokens
+
+    The following is a list of defined tokens for the XQuery grammar.
+    [7]   	S	   ::=   	WhitespaceChar+
+    [8]   	Nmstart	   ::=   	Letter |  "_"
+    [9]   	Nmchar	   ::=   	Letter |  CombiningChar |  Extender |  Digit |  "." |  "-" |  "_"
+    [10]   	Digits	   ::=   	[0-9]+
+    [11]   	EscapeQuot	   ::=   	'"' '"'
+    [12]   	PITarget	   ::=   	NCName
+    [13]   	VarName	   ::=   	QName
+    [14]   	NCNameForPrefix	   ::=   	Nmstart Nmchar*
+    [15]   	PredefinedEntityRef	   ::=   	"&" ("lt" |  "gt" |  "amp" |  "quot" |  "apos") ";"
+    [16]   	HexDigits	   ::=   	([0-9] | [a-f] | [A-F])+
+    [17]   	CharRef	   ::=   	"&#" (Digits |  ("x" HexDigits)) ";"
+    [18]   	EscapeApos	   ::=   	"''"
+    [19]   	Char	   ::=   	([#x0009] | [#x000D] | [#x000A] | [#x0020-#xFFFD])
+    [20]   	WhitespaceChar	   ::=   	([#x0009] | [#x000D] | [#x000A] | [#x0020])
+
+1.1.2 Lexical Rules
+
+The lexical contexts and transitions between lexical contexts is described in terms of a series of states and transitions between those states.
+
+As discussed above, there are various strategies that can be used by an implementation to disambiguate token symbol choices. Among the choices are lexical look-ahead and look-behind, a two-pass lexical evaluation, and a single recursive descent lexical evaluation and parse. This specification does not dictate what strategy to use. An implementation need not follow this approach in implementing lexer rules, but does need to conform to the results. For instance, instead of using a state automaton, an implementation might use lexical look-behind, or might use a full context-free-grammar parse, or it might make extensive use of parser lookahead (and use a more ambiguous token strategy).
+
+The tables below define the complete lexical rules for XQuery. Each table corresponds to a lexical state in which the tokens listed are recognized only in that state. When a given token is recognized in the given state, the transition to the next state is given. In some cases, a transition will "push" the current state or a specific state onto an abstract stack, and will later restore that state by a "pop" when another lexical event occurs.
+
+The lexical states have in many cases close connection to the parser productions. However, just because a token is recognized in a certain lexical state, does not mean it will be legal in the parser state.
+The #ANY State
+
+This state is for patterns that can be recognized in any state.
+Pattern	Transition To State
+WhitespaceChar
+Nmstart
+Nmchar
+Digits
+HexDigits
+	(maintain current state)
+The DEFAULT State
+
+This state is for patterns that occur at the beginning of an expression.
+Pattern	Transition To State
+"?"
+"["
+"+"
+"-"
+"("
+<"text" "(">
+<"comment" "(">
+<"node" "(">
+<"processing-instruction" "(">
+";"
+<"if" "(">
+<QName "(">
+<"at" StringLiteral>
+<"validate" "context">
+<"define" "function">
+	DEFAULT
+"{"
+<"validate" "{">
+	DEFAULT
+pushState(DEFAULT)
+<"attribute" QName "{">
+<"element" QName "{">
+<"element" "{">
+<"document" "{">
+<"attribute" "{">
+<"text" "{">
+	DEFAULT
+pushState(DEFAULT)
+"]"
+IntegerLiteral
+DecimalLiteral
+DoubleLiteral
+<"typeswitch" "(">
+<"stable" "order" "by">
+<"type" QName>
+"*"
+<NCName ":" "*">
+<"*" ":" NCName>
+"."
+".."
+")"
+StringLiteral
+	OPERATOR
+<"of" "type">
+"/"
+"//"
+<"child" "::">
+<"descendant" "::">
+<"parent" "::">
+<"attribute" "::">
+<"self" "::">
+<"descendant-or-self" "::">
+"@"
+	QNAME
+<"default" "collation" "=">
+<"declare" "namespace">
+	NAMESPACEDECL
+<"default" "element">
+<"default" "function">
+<"import" "schema">
+	NAMESPACEKEYWORD
+<"declare" "xmlspace">
+	XMLSPACE_DECL
+<"cast" "as">
+<"treat" "as">
+<")" "as">
+	ITEMTYPE
+"$"
+<"for" "$">
+<"let" "$">
+<"some" "$">
+<"every" "$">
+	VARNAME
+
+	START_TAG
+pushState(OPERATOR)
+"<!--"
+	XML_COMMENT
+pushState()
+"<?"
+	PROCESSING_INSTRUCTION
+pushState()
+"<![CDATA["
+	CDATA_SECTION
+pushState()
+S
+	(maintain state)
+","
+	resetParenStateOrSwitch(DEFAULT)
+ExprComment
+	(maintain state)
+"}"
+	popState
+The OPERATOR State
+
+This state is for patterns that are defined for operators.
+Pattern	Transition To State
+"/"
+"//"
+"div"
+"idiv"
+"mod"
+"and"
+"or"
+"*"
+"return"
+"then"
+"else"
+"to"
+"union"
+"intersect"
+"except"
+"="
+"is"
+"!="
+"isnot"
+"<="
+">="
+"<"
+">"
+"|"
+"<<"
+">>"
+"eq"
+"ne"
+"gt"
+"ge"
+"lt"
+"le"
+"in"
+"context"
+"where"
+<"order" "by">
+"satisfies"
+"at"
+":="
+"?"
+"["
+"+"
+"-"
+"("
+";"
+<"at" StringLiteral>
+"item"
+"node"
+"document"
+"comment"
+"text"
+<"define" "function">
+	DEFAULT
+"{"
+<"validate" "{">
+	DEFAULT
+pushState(DEFAULT)
+"]"
+IntegerLiteral
+DecimalLiteral
+DoubleLiteral
+<"typeswitch" "(">
+<"stable" "order" "by">
+"collation"
+<NCName ":" "*">
+<"*" ":" NCName>
+"."
+".."
+")"
+"ascending"
+"descending"
+<"empty" "greatest">
+<"empty" "least">
+StringLiteral
+"default"
+	OPERATOR
+<"of" "type">
+	QNAME
+<"default" "collation" "=">
+<"declare" "namespace">
+	NAMESPACEDECL
+<"default" "element">
+<"default" "function">
+<"import" "schema">
+	NAMESPACEKEYWORD
+<"declare" "xmlspace">
+	XMLSPACE_DECL
+<"instance" "of">
+<"castable" "as">
+"case"
+"as"
+<")" "as">
+	ITEMTYPE
+"$"
+<"for" "$">
+<"let" "$">
+<"some" "$">
+<"every" "$">
+	VARNAME
+S
+	(maintain state)
+","
+	resetParenStateOrSwitch(DEFAULT)
+ExprComment
+	(maintain state)
+"}"
+	popState
+The QNAME State
+
+When a qualified name is expected, and it is required to remove ambiguity from patterns that look like keywords, this state is used.
+Pattern	Transition To State
+"("
+<"text" "(">
+<"comment" "(">
+<"node" "(">
+<"processing-instruction" "(">
+";"
+	DEFAULT
+"*"
+<NCName ":" "*">
+<"*" ":" NCName>
+"."
+".."
+")"
+	OPERATOR
+"/"
+"//"
+<"child" "::">
+<"descendant" "::">
+<"parent" "::">
+<"attribute" "::">
+<"self" "::">
+<"descendant-or-self" "::">
+"@"
+	QNAME
+<")" "as">
+	ITEMTYPE
+"$"
+	VARNAME
+S
+	(maintain state)
+","
+	resetParenStateOrSwitch(DEFAULT)
+ExprComment
+	(maintain state)
+The NAMESPACEDECL State
+
+This state occurs inside of a namespace declaration, and is needed to recognize a NCName that is to be used as the prefix, as opposed to allowing a QName to occur. (Otherwise, the difference between NCName and QName are ambiguous.)
+Pattern	Transition To State
+URLLiteral
+	DEFAULT
+"="
+NCNameForPrefix
+	NAMESPACEDECL
+S
+	(maintain state)
+ExprComment
+	(maintain state)
+The NAMESPACEKEYWORD State
+
+This state occurs at places where the keyword "namespace" is expected, which would otherwise be ambiguous compared to a QName. QNames can not occur in this state.
+Pattern	Transition To State
+StringLiteral
+	OPERATOR
+"namespace"
+	NAMESPACEDECL
+S
+	(maintain state)
+ExprComment
+	(maintain state)
+The XMLSPACE_DECL State
+
+This state occurs at places where the keywords "preserve" and "strip" is expected to support "declare xmlspace". QNames can not occur in this state.
+Pattern	Transition To State
+"preserve"
+"strip"
+	DEFAULT
+"="
+	(maintain state)
+ExprComment
+	(maintain state)
+The ITEMTYPE State
+
+This state distinguishes tokens that can occur only inside the ItemType production.
+Pattern	Transition To State
+"attribute"
+"element"
+"node"
+"document"
+"comment"
+"text"
+"processing-instruction"
+"item"
+"untyped"
+<"atomic" "value">
+AtomicType
+"empty"
+	DEFAULT
+"{"
+<"validate" "{">
+	DEFAULT
+pushState(DEFAULT)
+<NCName ":" "*">
+<"*" ":" NCName>
+"."
+".."
+")"
+	OPERATOR
+<")" "as">
+	ITEMTYPE
+"$"
+	VARNAME
+S
+	(maintain state)
+ExprComment
+	(maintain state)
+The VARNAME State
+
+This state differentiates variable names from qualified names. This allows only the pattern of a QName to be recognized when otherwise ambiguities could occur.
+Pattern	Transition To State
+VarName
+	OPERATOR
+ExprComment
+	(maintain state)
+The START_TAG State
+
+This state allows attributes in the native XML syntax, and marks the beginning of an element construction. Element constructors also push the current state, popping it at the conclusion of an end tag. In the START_TAG state, the string ">" is recognized as a token which is associated with the transition to the original state.
+Pattern	Transition To State
+
+	DEFAULT
+pushState()
+">"
+	ELEMENT_CONTENT
+'"'
+	QUOT_ATTRIBUTE_CONTENT
+"'"
+	APOS_ATTRIBUTE_CONTENT
+S
+	(maintain state)
+QName
+	(maintain state)
+"="
+	(maintain state)
+"/>"
+	popState
+The ELEMENT_CONTENT State
+
+This state allows XML-like content, without these characters being misinterpreted as expressions. The character "{" marks a transition to the DEFAULT state, i.e. the start of an embedded expression, and the "}" character pops back to the ELEMENT_CONTENT state. To allow curly braces to be used as character content, a double left or right curly brace is interpreted as a single curly brace character. The string "</" is interpreted as the beginning of an end tag, which is associated with a transition to the END_TAG state.
+Pattern	Transition To State
+
+	DEFAULT
+pushState()
+"<"
+	START_TAG
+pushState()
+"</"
+	END_TAG
+"<!--"
+	XML_COMMENT
+pushState()
+"<?"
+	PROCESSING_INSTRUCTION
+pushState()
+"<![CDATA["
+	CDATA_SECTION
+pushState()
+"]]>"
+	popState
+ExprComment
+	(maintain state)
+PredefinedEntityRef
+CharRef
+	(maintain state)
+"{{"
+"}}"
+	(maintain state)
+Char
+	(maintain state)
+The END_TAG State
+
+When the end tag is terminated, the state is popped to the state that was pushed at the start of the corresponding start tag.
+Pattern	Transition To State
+
+	DEFAULT
+pushState()
+S
+	(maintain state)
+QName
+	(maintain state)
+">"
+	popState
+The XML_COMMENT State
+
+The "<--" token marks the beginning of an XML Comment, and the "-->" token marks the end. This allows no special interpretation of other characters in this state.
+Pattern	Transition To State
+Char
+	(maintain state)
+"-->"
+	popState
+The PROCESSING_INSTRUCTION State
+
+In this state, only lexemes that are legal in a processing instruction name are recognized.
+Pattern	Transition To State
+PITarget
+	PROCESSING_INSTRUCTION_CONTENT
+The PROCESSING_INSTRUCTION_CONTENT State
+
+In this state, only characters are that are legal in processing instruction content are recognized.
+Pattern	Transition To State
+Char
+	(maintain state)
+"?>"
+	popState
+The CDATA_SECTION State
+
+In this state, only lexemes that are legal in a CDATA section are recognized.
+Pattern	Transition To State
+"]]>"
+	popState
+Char
+	(maintain state)
+The QUOT_ATTRIBUTE_CONTENT State
+
+This state allows content legal for attributes. The character "{" marks a transition to the DEFAULT state, i.e. the start of an embedded expression, and the "}" character pops back to the original state. To allow curly braces to be used as character content, a double left or right curly brace is interpreted as a single curly brace character. This state is the same as QUOT_ATTRIBUTE_CONTENT, except that apostrophes are allowed without escaping, and an unescaped quote marks the end of the state.
+Pattern	Transition To State
+
+	DEFAULT
+pushState()
+'"'
+	START_TAG
+EscapeQuot
+	QUOT_ATTRIBUTE_CONTENT
+PredefinedEntityRef
+CharRef
+	(maintain state)
+"{{"
+"}}"
+	(maintain state)
+Char
+	(maintain state)
+"}"
+	popState
+The APOS_ATTRIBUTE_CONTENT State
+
+This state is the same as QUOT_ATTRIBUTE_CONTENT, except that quotes are allowed, and an unescaped apostrophe marks the end of the state.
+Pattern	Transition To State
+
+	DEFAULT
+pushState()
+"'"
+	START_TAG
+EscapeApos
+	APOS_ATTRIBUTE_CONTENT
+PredefinedEntityRef
+CharRef
+	(maintain state)
+"{{"
+"}}"
+	(maintain state)
+Char
+	(maintain state)
+1.2 BNF
+
+The following grammar uses the same Basic EBNF notation as [XML], except that grammar symbols always have initial capital letters. The EBNF contains the lexemes embedded in the productions.
+
+Note:
+
+Note that the Semicolon character is reserved for future use.
+NON-TERMINALS
+[21]   	Query	   ::=   	QueryProlog QueryBody
+[22]   	QueryProlog	   ::=   	(NamespaceDecl
+|  XMLSpaceDecl
+|  DefaultNamespaceDecl
+|  DefaultCollationDecl
+|  SchemaImport)* FunctionDefn*
+[23]   	QueryBody	   ::=   	ExprSequence?
+[24]   	ExprSequence	   ::=   	Expr ("," Expr)*
+[25]   	Expr	   ::=   	OrExpr
+[26]   	OrExpr	   ::=   	AndExpr ( "or"  AndExpr )*
+[27]   	AndExpr	   ::=   	FLWRExpr ( "and"  FLWRExpr )*
+[28]   	FLWRExpr	   ::=   	((ForClause |  LetClause)+ WhereClause? OrderByClause? "return")* QuantifiedExpr
+[29]   	QuantifiedExpr	   ::=   	((<"some" "$"> |  <"every" "$">) VarName TypeDeclaration? "in" Expr ("," "$" VarName TypeDeclaration? "in" Expr)* "satisfies")* TypeswitchExpr
+[30]   	TypeswitchExpr	   ::=   	(<"typeswitch" "("> Expr ")" CaseClause+ "default" ("$" VarName)? "return")* IfExpr
+[31]   	IfExpr	   ::=   	(<"if" "("> Expr ")" "then" Expr "else")* InstanceofExpr
+[32]   	InstanceofExpr	   ::=   	CastableExpr ( <"instance" "of"> SequenceType )?
+[33]   	CastableExpr	   ::=   	ComparisonExpr ( <"castable" "as"> SingleType )?
+[34]   	ComparisonExpr	   ::=   	RangeExpr ( (ValueComp
+|  GeneralComp
+|  NodeComp
+|  OrderComp)  RangeExpr )?
+[35]   	RangeExpr	   ::=   	AdditiveExpr ( "to"  AdditiveExpr )?
+[36]   	AdditiveExpr	   ::=   	MultiplicativeExpr ( ("+" |  "-")  MultiplicativeExpr )*
+[37]   	MultiplicativeExpr	   ::=   	UnaryExpr ( ("*" |  "div" |  "idiv" |  "mod")  UnaryExpr )*
+[38]   	UnaryExpr	   ::=   	("-" |  "+")* UnionExpr
+[39]   	UnionExpr	   ::=   	IntersectExceptExpr ( ("union" |  "|")  IntersectExceptExpr )*
+[40]   	IntersectExceptExpr	   ::=   	ValueExpr ( ("intersect" |  "except")  ValueExpr )*
+[41]   	ValueExpr	   ::=   	ValidateExpr |  CastExpr |  TreatExpr |  Constructor |  PathExpr
+[42]   	PathExpr	   ::=   	("/" RelativePathExpr?) |  ("//" RelativePathExpr) |  RelativePathExpr
+[43]   	RelativePathExpr	   ::=   	StepExpr (("/" |  "//") StepExpr)*
+[44]   	StepExpr	   ::=   	(ForwardStep |  ReverseStep |  PrimaryExpr) Predicates
+[45]   	ForClause	   ::=   	<"for" "$"> VarName TypeDeclaration? PositionalVar? "in" Expr ("," "$" VarName TypeDeclaration? PositionalVar? "in" Expr)*
+[46]   	LetClause	   ::=   	<"let" "$"> VarName TypeDeclaration? ":=" Expr ("," "$" VarName TypeDeclaration? ":=" Expr)*
+[47]   	WhereClause	   ::=   	"where" Expr
+[48]   	PositionalVar	   ::=   	"at" "$" VarName
+[49]   	ValidateExpr	   ::=   	(<"validate" "{"> |  (<"validate" "context"> SchemaGlobalContext ("/" SchemaContextStep)* "{")) Expr "}"
+[50]   	CastExpr	   ::=   	<"cast" "as"> SingleType ParenthesizedExpr
+[51]   	TreatExpr	   ::=   	<"treat" "as"> SequenceType ParenthesizedExpr
+[52]   	Constructor	   ::=   	ElementConstructor
+|  XmlComment
+|  XmlProcessingInstruction
+|  CdataSection
+|  ComputedDocumentConstructor
+|  ComputedElementConstructor
+|  ComputedAttributeConstructor
+|  ComputedTextConstructor
+[53]   	GeneralComp	   ::=   	"=" |  "!=" |  "<" |  "<=" |  ">" |  ">="
+[54]   	ValueComp	   ::=   	"eq" |  "ne" |  "lt" |  "le" |  "gt" |  "ge"
+[55]   	NodeComp	   ::=   	"is" |  "isnot"
+[56]   	OrderComp	   ::=   	"<<" |  ">>"
+[57]   	OrderByClause	   ::=   	(<"order" "by"> |  <"stable" "order" "by">) OrderSpecList
+[58]   	OrderSpecList	   ::=   	OrderSpec ("," OrderSpec)*
+[59]   	OrderSpec	   ::=   	Expr OrderModifier
+[60]   	OrderModifier	   ::=   	("ascending" |  "descending")? (<"empty" "greatest"> |  <"empty" "least">)? ("collation" StringLiteral)?
+[61]   	CaseClause	   ::=   	"case" ("$" VarName "as")? SequenceType "return" Expr
+[62]   	PrimaryExpr	   ::=   	Literal |  FunctionCall |  ("$" VarName) |  ParenthesizedExpr
+[63]   	ForwardAxis	   ::=   	<"child" "::">
+|  <"descendant" "::">
+|  <"attribute" "::">
+|  <"self" "::">
+|  <"descendant-or-self" "::">
+[64]   	ReverseAxis	   ::=   	<"parent" "::">
+[65]   	NodeTest	   ::=   	KindTest |  NameTest
+[66]   	NameTest	   ::=   	QName |  Wildcard
+[67]   	Wildcard	   ::=   	"*" |  <NCName ":" "*"> |  <"*" ":" NCName>
+[68]   	KindTest	   ::=   	ProcessingInstructionTest
+|  CommentTest
+|  TextTest
+|  AnyKindTest
+[69]   	ProcessingInstructionTest	   ::=   	<"processing-instruction" "("> StringLiteral? ")"
+[70]   	CommentTest	   ::=   	<"comment" "("> ")"
+[71]   	TextTest	   ::=   	<"text" "("> ")"
+[72]   	AnyKindTest	   ::=   	<"node" "("> ")"
+[73]   	ForwardStep	   ::=   	(ForwardAxis NodeTest) |  AbbreviatedForwardStep
+[74]   	ReverseStep	   ::=   	(ReverseAxis NodeTest) |  AbbreviatedReverseStep
+[75]   	AbbreviatedForwardStep	   ::=   	"." |  ("@" NameTest) |  NodeTest
+[76]   	AbbreviatedReverseStep	   ::=   	".."
+[77]   	Predicates	   ::=   	("[" Expr "]")*
+[78]   	NumericLiteral	   ::=   	IntegerLiteral |  DecimalLiteral |  DoubleLiteral
+[79]   	Literal	   ::=   	NumericLiteral |  StringLiteral
+[80]   	ParenthesizedExpr	   ::=   	"(" ExprSequence? ")"
+[81]   	FunctionCall	   ::=   	<QName "("> (Expr ("," Expr)*)? ")"
+[82]   	Param	   ::=   	"$" VarName TypeDeclaration?
+[83]   	SchemaContext	   ::=   	"context" SchemaGlobalContext ("/" SchemaContextStep)*
+[84]   	SchemaGlobalContext	   ::=   	QName |  <"type" QName>
+[85]   	SchemaContextStep	   ::=   	QName
+[86]   	TypeDeclaration	   ::=   	"as" SequenceType
+[87]   	SingleType	   ::=   	AtomicType "?"?
+[88]   	SequenceType	   ::=   	(ItemType OccurrenceIndicator) |  "empty"
+[89]   	ItemType	   ::=   	(("element" |  "attribute") ElemOrAttrType?)
+|  "node"
+|  "processing-instruction"
+|  "comment"
+|  "text"
+|  "document"
+|  "item"
+|  AtomicType
+|  "untyped"
+|  <"atomic" "value">
+[90]   	ElemOrAttrType	   ::=   	(QName (SchemaType |  SchemaContext?)) |  SchemaType
+[91]   	SchemaType	   ::=   	<"of" "type"> QName
+[92]   	AtomicType	   ::=   	QName
+[93]   	OccurrenceIndicator	   ::=   	("*" |  "+" |  "?")?
+[94]   	ElementConstructor
+(ws: explicit)	   ::=   	"<" QName AttributeList ("/>" |  (">" ElementContent* "</" QName S? ">"))
+[95]   	ComputedDocumentConstructor	   ::=   	<"document" "{"> ExprSequence "}"
+[96]   	ComputedElementConstructor	   ::=   	(<"element" QName "{"> |  (<"element" "{"> Expr "}" "{")) ExprSequence? "}"
+[97]   	ComputedAttributeConstructor	   ::=   	(<"attribute" QName "{"> |  (<"attribute" "{"> Expr "}" "{")) ExprSequence? "}"
+[98]   	ComputedTextConstructor	   ::=   	<"text" "{"> ExprSequence? "}"
+[99]   	CdataSection
+(ws: significant)	   ::=   	"<![CDATA[" Char* "]]>"
+[100]   	XmlProcessingInstruction
+(ws: significant)	   ::=   	"<?" PITarget Char* "?>"
+[101]   	XmlComment
+(ws: significant)	   ::=   	"<!--" Char* "-->"
+[102]   	ElementContent
+(ws: significant)	   ::=   	Char
+|  "{{"
+|  "}}"
+|  ElementConstructor
+|  EnclosedExpr
+|  CdataSection
+|  CharRef
+|  PredefinedEntityRef
+|  XmlComment
+|  XmlProcessingInstruction
+[103]   	AttributeList
+(ws: explicit)	   ::=   	(S (QName S? "=" S? AttributeValue)?)*
+[104]   	AttributeValue
+(ws: significant)	   ::=   	('"' (EscapeQuot |  AttributeValueContent)* '"')
+|  ("'" (EscapeApos |  AttributeValueContent)* "'")
+[105]   	AttributeValueContent
+(ws: significant)	   ::=   	Char
+|  CharRef
+|  "{{"
+|  "}}"
+|  EnclosedExpr
+|  PredefinedEntityRef
+[106]   	EnclosedExpr	   ::=   	"{" ExprSequence "}"
+[107]   	XMLSpaceDecl	   ::=   	<"declare" "xmlspace"> "=" ("preserve" |  "strip")
+[108]   	DefaultCollationDecl	   ::=   	<"default" "collation" "="> URLLiteral
+[109]   	NamespaceDecl	   ::=   	<"declare" "namespace"> NCNameForPrefix "=" URLLiteral
+[110]   	SubNamespaceDecl	   ::=   	"namespace" NCNameForPrefix "=" URLLiteral
+[111]   	DefaultNamespaceDecl	   ::=   	(<"default" "element"> |  <"default" "function">) "namespace" "=" URLLiteral
+[112]   	FunctionDefn	   ::=   	<"define" "function"> <QName "("> ParamList? (")" |  (<")" "as"> SequenceType)) EnclosedExpr
+[113]   	ParamList	   ::=   	Param ("," Param)*
+[114]   	SchemaImport	   ::=   	<"import" "schema"> (StringLiteral |  SubNamespaceDecl |  DefaultNamespaceDecl) <"at" StringLiteral>?
+1.3 Reserved Function Names
+
+The following is a list of names that may not be used as user function names, in an unprefixed form.
+
+    if
+
+    typeswitch
+
+    item
+
+    node
+
+    element
+
+    attribute
+
+    comment
+
+    text
+
+    processing-instruction
+
+    id
+
+    key
+
+1.4 Precedence Order
+
+In all cases the grammar defines built-in precedence. In the cases where a number of statements are a choice at the same production level, the expressions are always evaluated from left to right.
